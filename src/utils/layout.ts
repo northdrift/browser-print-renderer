@@ -116,8 +116,13 @@ export class LayoutEngine {
         totalPages,
         elements: pageElements.map((el: any) => {
           if (el.type === 'table') {
-            // 修正非首页表格的 Y 坐标
-            const newY = isFirst ? el.y : paper.margins.top;
+            // 核心修复：修正非首页表格的 Y 坐标
+            // 如果配置了每页显示页眉 (perPage)，则非首页也应保持原有的 el.y 以预留空间
+            // 如果配置了仅首页显示 (firstPageOnly)，则非首页上移至 margins.top
+            let newY = el.y;
+            if (!isFirst && headerDisplay === 'firstPageOnly') {
+              newY = paper.margins.top;
+            }
             return { ...el, y: newY };
           }
           return el;
@@ -161,8 +166,6 @@ export class LayoutEngine {
     
     // 策略 A: 固定行数分页
     if (rowsPerPage && rowsPerPage > 0) {
-      // 1. 将原始数据按列数分块
-      // 注意：如果是纵向优先 (ttb-ltr)，逻辑会有所不同，这里先实现横向优先
       const chunkedItems = this.chunkData(items, columnsCount, dataFlow);
       
       for (let i = 0; i < chunkedItems.length; i += rowsPerPage) {
@@ -172,7 +175,6 @@ export class LayoutEngine {
         if (autoFillBlank && i + rowsPerPage >= chunkedItems.length) {
           const fillCount = rowsPerPage - pageRows.length;
           for (let j = 0; j < fillCount; j++) {
-            // 填充空白行，每行包含 columnsCount 个空白单元格
             const blankRow = Array(columnsCount).fill({ __isBlank: true });
             pageRows.push(blankRow);
           }
@@ -180,12 +182,11 @@ export class LayoutEngine {
         tablePages.push(pageRows);
       }
     } 
-    // 策略 B: 自动高度分页 (简化版)
     else {
       const defaultRows = 15;
       for (let i = 0; i < items.length; i += defaultRows) {
         const pageItems = items.slice(i, i + defaultRows);
-        tablePages.push(pageItems.map(item => [item])); // 包装成单列结构
+        tablePages.push(pageItems.map(item => [item]));
       }
     }
 
@@ -200,20 +201,14 @@ export class LayoutEngine {
 
     const result: any[][] = [];
     if (flow === 'ltr-ttb') {
-      // 横向优先: [1, 2, 3, 4] -> [[1, 2], [3, 4]]
       for (let i = 0; i < items.length; i += columns) {
         const row = items.slice(i, i + columns);
-        // 如果最后一行不满，补齐
         while (row.length < columns) {
           row.push({ __isBlank: true });
         }
         result.push(row);
       }
     } else {
-      // 纵向优先: 比较复杂，需要先知道总行数
-      // 假设总共有 N 条数据，分 C 列，则每页行数 R = ceil(N / C)
-      // 但这里是按 rowsPerPage 分页，所以逻辑是：
-      // 每一页取 rowsPerPage * columnsCount 条数据，然后在这页内进行纵向排列
       const pageSize = (this.template.elements.find((el: any) => el.type === 'table').rowsPerPage || 15) * columns;
       for (let i = 0; i < items.length; i += pageSize) {
         const pageItems = items.slice(i, i + pageSize);

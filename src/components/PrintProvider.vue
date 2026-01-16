@@ -43,6 +43,7 @@ const emit = defineEmits<{
 const computedPages = ref<ComputedPage[]>([]);
 const isReady = ref(false);
 const isComputing = ref(false);
+const printContentRef = ref<HTMLElement | null>(null);
 
 const computeLayout = async () => {
   if (isComputing.value) return;
@@ -52,7 +53,6 @@ const computeLayout = async () => {
   await nextTick();
   
   try {
-    // 使用 V2.0 布局引擎
     const engine = new LayoutEngine(props.template, { ...props.data });
     computedPages.value = engine.computePages();
     isReady.value = true;
@@ -63,6 +63,51 @@ const computeLayout = async () => {
     isComputing.value = false;
   }
 };
+
+/**
+ * 获取打印内容 HTML
+ * 返回完整包含样式的 HTML 字符串或数组
+ */
+const getPrintContent = () => {
+  if (!printContentRef.value) return props.outputMode === 'multiple' ? [] : '';
+
+  // 1. 获取所有样式
+  const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+    .map(el => el.outerHTML)
+    .join('\n');
+
+  const wrapHtml = (bodyContent: string) => `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Print Content</title>
+  ${styles}
+  <style>
+    body { margin: 0; padding: 0; background: white; }
+    @media print { .print-page { box-shadow: none; margin: 0; } }
+  </style>
+</head>
+<body>
+  ${bodyContent}
+</body>
+</html>`;
+
+  if (props.outputMode === 'multiple') {
+    // 每一页一个独立的 HTML
+    const pageElements = printContentRef.value.querySelectorAll('.print-page');
+    return Array.from(pageElements).map(el => wrapHtml(el.outerHTML));
+  } else {
+    // 所有页一个 HTML
+    return wrapHtml(printContentRef.value.innerHTML);
+  }
+};
+
+// 暴露方法给父组件
+defineExpose({
+  getPrintContent,
+  computeLayout
+});
 
 onMounted(() => {
   computeLayout();
@@ -81,21 +126,16 @@ provide('businessData', props.data);
 
 <template>
   <div class="print-provider">
-    <div v-if="isReady" class="print-content">
-      <template v-if="outputMode === 'single' || !outputMode">
-        <PrintPage
-          v-for="page in computedPages"
-          :key="page.pageNumber"
-          :page-config="page.paperConfig"
-          :elements="page.elements"
-          :page-number="page.pageNumber"
-          :total-pages="page.totalPages"
-          :page-data="page.pageData"
-        />
-      </template>
-      <div v-else class="multiple-mode-placeholder">
-        已生成 {{ computedPages.length }} 页数据。
-      </div>
+    <div v-if="isReady" ref="printContentRef" class="print-content">
+      <PrintPage
+        v-for="page in computedPages"
+        :key="page.pageNumber"
+        :page-config="page.paperConfig"
+        :elements="page.elements"
+        :page-number="page.pageNumber"
+        :total-pages="page.totalPages"
+        :page-data="page.pageData"
+      />
     </div>
     <div v-else class="loading-container">
       <div class="loading-spinner"></div>
@@ -149,7 +189,7 @@ provide('businessData', props.data);
     background-color: transparent;
     gap: 0;
   }
-  .multiple-mode-placeholder, .loading-container {
+  .loading-container {
     display: none;
   }
 }

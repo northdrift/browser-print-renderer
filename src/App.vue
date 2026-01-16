@@ -2,9 +2,11 @@
 import { ref, watch, computed } from 'vue';
 import PrintProvider from './components/PrintProvider.vue';
 
+const providerRef = ref<any>(null);
+
 // 标准工业出库单场景模板
 const industrialTemplate = {
-  headerDisplay: 'firstPageOnly',
+  headerDisplay: 'perPage', // 默认每页显示页眉，测试重叠修复
   footerDisplay: 'lastPageOnly',
   paper: {
     width: 210,
@@ -13,22 +15,13 @@ const industrialTemplate = {
     margins: { top: 10, right: 10, bottom: 10, left: 10 }
   },
   elements: [
-    // 页眉装饰线
     { id: 'top-line', type: 'line', x: 0, y: 28, width: 190, height: 0.5, lineStyle: 'solid', lineColor: '#333' },
-    
-    // Logo 与 标题
     { id: 'logo', type: 'image', x: 0, y: 0, width: 20, height: 20, src: 'https://vuejs.org/images/logo.png' },
-    { id: 'title', type: 'text', x: 30, y: 5, width: 130, height: 15, content: '工业产品出库单 (标准版)', style: { fontSize: '24px', fontWeight: 'bold', textAlign: 'center', color: '#2c3e50' } },
-    
-    // 订单条码
+    { id: 'title', type: 'text', x: 30, y: 5, width: 130, height: 15, content: '工业产品出库单 (V2.1)', style: { fontSize: '24px', fontWeight: 'bold', textAlign: 'center', color: '#2c3e50' } },
     { id: 'barcode', type: 'barcode', x: 160, y: 0, width: 30, height: 12, dataKey: 'orderNo', style: { fontSize: '10px' } },
-    
-    // 基础信息
     { id: 'info-1', type: 'text', x: 0, y: 22, width: 60, height: 5, content: '客户名称：{customer}', style: { fontSize: '11px' } },
     { id: 'info-2', type: 'text', x: 65, y: 22, width: 60, height: 5, content: '出库日期：{date}', style: { fontSize: '11px' } },
     { id: 'info-3', type: 'text', x: 130, y: 22, width: 60, height: 5, content: '仓库：{warehouse}', style: { fontSize: '11px' } },
-
-    // 主体表格
     {
       id: 'main-table',
       type: 'table',
@@ -53,19 +46,11 @@ const industrialTemplate = {
       autoFillBlank: true,
       tableHeaderDisplay: 'perPage'
     },
-
-    // 页脚装饰线
     { id: 'bottom-line', type: 'line', x: 0, y: 265, width: 190, height: 0.5, lineStyle: 'dashed', lineColor: '#999' },
-    
-    // 签章区域
     { id: 'sign-1', type: 'text', x: 0, y: 270, width: 40, height: 5, content: '制单人：________', style: { fontSize: '11px' } },
     { id: 'sign-2', type: 'text', x: 50, y: 270, width: 40, height: 5, content: '发货人：________', style: { fontSize: '11px' } },
     { id: 'sign-3', type: 'text', x: 100, y: 270, width: 40, height: 5, content: '收货人签章：________', style: { fontSize: '11px' } },
-
-    // 二维码
     { id: 'qrcode', type: 'qrcode', x: 165, y: 268, width: 22, height: 22, dataKey: 'qrUrl' },
-    
-    // 页码
     { id: 'page-info', type: 'pageInfo', x: 0, y: 285, width: 190, height: 5, format: '第 {pageNumber} 页 / 共 {totalPages} 页', style: { textAlign: 'center', fontSize: '10px', color: '#7f8c8d' } }
   ]
 };
@@ -83,7 +68,7 @@ const industrialData = {
     unit: '个',
     qty: Math.floor(Math.random() * 50) + 1,
     price: (Math.random() * 100 + 50).toFixed(2),
-    amount: '0.00', // 稍后计算
+    amount: '0.00',
     category: i < 15 ? '核心组件' : (i < 30 ? '辅助配件' : '包装耗材')
   })).map(item => ({ ...item, amount: (parseFloat(item.price) * item.qty).toFixed(2) }))
 };
@@ -91,16 +76,16 @@ const industrialData = {
 const templateJson = ref(JSON.stringify(industrialTemplate, null, 2));
 const dataJson = ref(JSON.stringify(industrialData, null, 2));
 const error = ref('');
+const outputMode = ref<'single' | 'multiple'>('single');
 
 const template = ref(industrialTemplate);
 const data = ref(industrialData);
 
-// 快捷配置项
 const quickConfigs = ref({
   columnsCount: 1,
   rowsPerPage: 12,
   autoFillBlank: true,
-  headerDisplay: 'firstPageOnly'
+  headerDisplay: 'perPage'
 });
 
 watch(quickConfigs, (newVal) => {
@@ -126,38 +111,47 @@ watch([templateJson, dataJson], () => {
 });
 
 const print = () => window.print();
+
+const exportHtml = () => {
+  const content = providerRef.value?.getPrintContent();
+  console.log('Exported HTML:', content);
+  alert('HTML 已导出至控制台，请查看。如果是多页模式，将返回 HTML 数组。');
+};
 </script>
 
 <template>
   <div class="playground">
-    <!-- 侧边栏：编辑器与快捷配置 -->
     <div class="sidebar">
       <div class="sidebar-header">
-        <h3>Manus Print Playground</h3>
-        <button class="btn-primary" @click="print">打印预览</button>
+        <h3>Manus Print Playground V2.1</h3>
+        <div class="actions">
+          <button class="btn-secondary" @click="exportHtml">导出 HTML</button>
+          <button class="btn-primary" @click="print">打印预览</button>
+        </div>
       </div>
 
-      <!-- 快捷配置区 -->
       <div class="config-card">
-        <div class="card-title">快捷配置 (V2.0 特性)</div>
+        <div class="card-title">快捷配置 (修复重叠 & 导出 HTML)</div>
         <div class="config-grid">
           <div class="config-item">
             <label>表格列数</label>
             <select v-model="quickConfigs.columnsCount">
               <option :value="1">单列</option>
               <option :value="2">双列</option>
-              <option :value="3">三列</option>
             </select>
-          </div>
-          <div class="config-item">
-            <label>每页行数</label>
-            <input type="number" v-model="quickConfigs.rowsPerPage" />
           </div>
           <div class="config-item">
             <label>页眉显示</label>
             <select v-model="quickConfigs.headerDisplay">
+              <option value="perPage">每页显示 (测试修复)</option>
               <option value="firstPageOnly">仅首页</option>
-              <option value="perPage">每页</option>
+            </select>
+          </div>
+          <div class="config-item">
+            <label>输出模式</label>
+            <select v-model="outputMode">
+              <option value="single">单 HTML</option>
+              <option value="multiple">多 HTML (每页一个)</option>
             </select>
           </div>
           <div class="config-item checkbox">
@@ -167,14 +161,13 @@ const print = () => window.print();
         </div>
       </div>
 
-      <!-- JSON 编辑器 -->
       <div class="editor-tabs">
         <div class="editor-container">
-          <label>模板配置 (Template JSON)</label>
+          <label>模板配置</label>
           <textarea v-model="templateJson" spellcheck="false"></textarea>
         </div>
         <div class="editor-container">
-          <label>业务数据 (Business Data JSON)</label>
+          <label>业务数据</label>
           <textarea v-model="dataJson" spellcheck="false"></textarea>
         </div>
       </div>
@@ -182,17 +175,17 @@ const print = () => window.print();
       <div v-if="error" class="error-banner">{{ error }}</div>
     </div>
 
-    <!-- 主预览区 -->
     <div class="main-content">
       <div class="preview-toolbar">
-        <span>实时预览区域 (支持 A4 纸张模拟)</span>
-        <div class="zoom-info">100% 比例渲染</div>
+        <span>实时预览区域 (V2.1 修复版)</span>
+        <div class="zoom-info">支持导出完整样式 HTML</div>
       </div>
       <div class="preview-viewport">
         <PrintProvider
+          ref="providerRef"
           :template="template"
           :data="data"
-          output-mode="single"
+          :output-mode="outputMode"
         />
       </div>
     </div>
@@ -210,11 +203,7 @@ const print = () => window.print();
 
 body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 
-.playground {
-  display: flex;
-  height: 100vh;
-  background: #f0f2f5;
-}
+.playground { display: flex; height: 100vh; background: #f0f2f5; }
 
 .sidebar {
   width: 480px;
@@ -236,8 +225,20 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 
 .sidebar-header h3 { margin: 0; font-size: 16px; color: var(--accent); }
 
+.actions { display: flex; gap: 8px; }
+
 .btn-primary {
   background: var(--accent);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-secondary {
+  background: #34495e;
   color: white;
   border: none;
   padding: 8px 16px;
@@ -255,11 +256,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 
 .card-title { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; text-transform: uppercase; }
 
-.config-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
+.config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 .config-item label { display: block; font-size: 11px; color: #ccc; margin-bottom: 4px; }
 .config-item select, .config-item input[type="number"] {
@@ -272,28 +269,13 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
   font-size: 12px;
 }
 
-.config-item.checkbox {
-  display: flex;
-  align-items: center;
-  grid-column: span 2;
-}
+.config-item.checkbox { display: flex; align-items: center; grid-column: span 2; }
 .config-item.checkbox input { margin-right: 8px; }
 .config-item.checkbox label { margin-bottom: 0; cursor: pointer; }
 
-.editor-tabs {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-}
+.editor-tabs { flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 
-.editor-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
+.editor-container { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 
 .editor-container label { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
 .editor-container textarea {
@@ -309,21 +291,9 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
   outline: none;
 }
 
-.error-banner {
-  background: #5a1d1d;
-  color: #ff8888;
-  padding: 8px;
-  font-size: 11px;
-  border-radius: 4px;
-  margin-top: 10px;
-}
+.error-banner { background: #5a1d1d; color: #ff8888; padding: 8px; font-size: 11px; border-radius: 4px; margin-top: 10px; }
 
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
+.main-content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
 .preview-toolbar {
   height: 40px;
@@ -339,13 +309,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 
 .zoom-info { color: var(--text-dim); font-size: 11px; }
 
-.preview-viewport {
-  flex: 1;
-  overflow-y: auto;
-  padding: 30px;
-  display: flex;
-  justify-content: center;
-}
+.preview-viewport { flex: 1; overflow-y: auto; padding: 30px; display: flex; justify-content: center; }
 
 @media print {
   .sidebar, .preview-toolbar { display: none; }
