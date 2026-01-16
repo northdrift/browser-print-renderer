@@ -1,4 +1,9 @@
-// 内联类型定义
+/**
+ * 布局引擎 V2.0
+ * 负责将模板和数据转换为分页后的渲染数据
+ */
+
+// 内联类型定义以确保稳定性
 export interface PaperConfig {
   width: number;
   height: number;
@@ -8,37 +13,14 @@ export interface PaperConfig {
 
 export interface PrintElement {
   id: string;
-  type: 'text' | 'image' | 'qrcode' | 'barcode' | 'line' | 'rect' | 'table' | 'pageInfo';
+  type: string;
   x: number;
   y: number;
   width: number;
   height: number;
   dataKey?: string;
   style?: Record<string, any>;
-}
-
-export interface TableRow {
-  height: number;
-  heightMode: 'fixed' | 'auto';
-  cells: any[];
-}
-
-export interface TableElement extends PrintElement {
-  type: 'table';
-  header?: {
-    rows: TableRow[];
-    repeat: 'all' | 'first' | 'none';
-  };
-  footer?: {
-    rows: TableRow[];
-    repeat: 'all' | 'last' | 'none';
-    position: 'fixed' | 'follow';
-  };
-  body: {
-    dataKey: string;
-    layout: 'ltr-ttb' | 'ttb-ltr';
-    rowTemplate: TableRow;
-  };
+  [key: string]: any;
 }
 
 export interface ComputedPage {
@@ -47,10 +29,6 @@ export interface ComputedPage {
   elements: PrintElement[];
   paperConfig: PaperConfig;
   pageData: any;
-}
-
-export interface BusinessData {
-  [key: string]: any;
 }
 
 export class UnitConverter {
@@ -65,79 +43,22 @@ export class UnitConverter {
 
 export class LayoutEngine {
   private template: any;
-  private data: BusinessData;
-  private measurementTool: HTMLElement | null = null;
+  private data: any;
 
-  constructor(template: any, data: BusinessData) {
+  constructor(template: any, data: any) {
     this.template = template;
     this.data = data;
   }
 
-  private initMeasurementTool() {
-    if (typeof document === 'undefined') return;
-    this.measurementTool = document.getElementById('print-measurement-tool');
-    if (!this.measurementTool) {
-      this.measurementTool = document.createElement('div');
-      this.measurementTool.id = 'print-measurement-tool';
-      this.measurementTool.style.position = 'absolute';
-      this.measurementTool.style.left = '-9999px';
-      this.measurementTool.style.top = '-9999px';
-      this.measurementTool.style.visibility = 'hidden';
-      this.measurementTool.style.pointerEvents = 'none';
-      document.body.appendChild(this.measurementTool);
-    }
-  }
-
-  private calculateRowHeight(row: TableRow, rowData: any): number {
-    if (row.heightMode === 'fixed') {
-      return UnitConverter.mmToPx(row.height);
-    }
-
-    this.initMeasurementTool();
-    if (!this.measurementTool) return UnitConverter.mmToPx(row.height);
-
-    const rowDiv = document.createElement('div');
-    rowDiv.style.display = 'flex';
-    rowDiv.style.width = '100%';
-    rowDiv.style.borderCollapse = 'collapse';
-    // 确保测量时的字体与实际一致
-    rowDiv.style.fontFamily = 'sans-serif';
-    rowDiv.style.fontSize = '12px';
-    
-    row.cells.forEach(cell => {
-      const cellDiv = document.createElement('div');
-      cellDiv.style.width = `${UnitConverter.mmToPx(cell.width)}px`;
-      cellDiv.style.border = '1px solid black';
-      cellDiv.style.padding = '2px';
-      cellDiv.style.boxSizing = 'border-box';
-      cellDiv.style.wordBreak = 'break-all';
-      
-      let content = '';
-      cell.content.forEach((el: any) => {
-        if (el.dataKey) {
-          content += String(rowData[el.dataKey] || '');
-        } else {
-          content += String(el.content || '');
-        }
-      });
-      cellDiv.innerText = content;
-      rowDiv.appendChild(cellDiv);
-    });
-
-    this.measurementTool.innerHTML = '';
-    this.measurementTool.appendChild(rowDiv);
-    const height = rowDiv.getBoundingClientRect().height;
-    this.measurementTool.innerHTML = '';
-    
-    return Math.max(height, UnitConverter.mmToPx(row.height));
-  }
-
+  /**
+   * 核心分页方法
+   */
   public computePages(): ComputedPage[] {
+    const { paper, elements, headerDisplay = 'perPage', footerDisplay = 'perPage' } = this.template;
     const pages: ComputedPage[] = [];
-    const { paper, elements } = this.template;
     
-    const pageInnerHeightPx = UnitConverter.mmToPx(paper.height - paper.margins.top - paper.margins.bottom);
-    const tableElement = elements.find((el: any) => el.type === 'table') as TableElement | undefined;
+    // 1. 识别主体表格
+    const tableElement = elements.find((el: any) => el.type === 'table');
     
     if (!tableElement) {
       pages.push({
@@ -145,114 +66,169 @@ export class LayoutEngine {
         totalPages: 1,
         elements: [...elements],
         paperConfig: paper,
-        pageData: {}
+        pageData: { ...this.data }
       });
       return pages;
     }
 
-    // 分离元素：表头（y < table.y）、表尾（y > table.y）
-    const headerElements = elements.filter((el: any) => el.type !== 'table' && el.y < tableElement.y);
-    const footerElements = elements.filter((el: any) => el.type !== 'table' && el.y > tableElement.y);
-    // 其他元素（如页码，通常在页面底部，不随表格分页变化）
-    const otherElements = elements.filter((el: any) => el.type !== 'table' && el.y >= tableElement.y && el.type === 'pageInfo');
+    // 2. 准备表格数据
+    const rawItems = this.data[tableElement.dataKey] || [];
     
-    const tableData = this.data[tableElement.body.dataKey] || [];
-    let currentRowIndex = 0;
-    let currentPageNumber = 1;
-
-    const tableHeaderHeightPx = tableElement.header ? 
-      tableElement.header.rows.reduce((sum, row) => sum + this.calculateRowHeight(row, {}), 0) : 0;
-    const tableFooterHeightPx = tableElement.footer ? 
-      tableElement.footer.rows.reduce((sum, row) => sum + this.calculateRowHeight(row, this.data), 0) : 0;
-
-    while (currentRowIndex < tableData.length || currentPageNumber === 1) {
-      const currentPageElements: PrintElement[] = [];
-      
-      // 1. 只有第一页渲染页眉元素
-      if (currentPageNumber === 1) {
-        currentPageElements.push(...headerElements);
-      }
-
-      // 2. 计算表格起始位置
-      // 第一页从原定 y 开始，后续页面从 0 开始
-      let tableYPx = currentPageNumber === 1 ? UnitConverter.mmToPx(tableElement.y) : 0;
-      let availableHeightPx = pageInnerHeightPx - tableYPx;
-      
-      // 3. 预留固定表尾空间
-      if (tableElement.footer?.position === 'fixed') {
-        availableHeightPx -= tableFooterHeightPx;
-      }
-      
-      // 4. 预留页码等固定元素空间（如果有）
-      otherElements.forEach((el: any) => {
-        if (el.y > tableElement.y) {
-          // 简化处理：如果元素在表格下方，预留其高度空间
-          // 实际应更精确计算，这里暂不处理
-        }
-      });
-
-      const shouldShowHeader = tableElement.header && (
-        tableElement.header.repeat === 'all' || 
-        (tableElement.header.repeat === 'first' && currentPageNumber === 1)
-      );
-
-      const pageTableRows: any[] = [];
-      let currentTableHeightPx = shouldShowHeader ? tableHeaderHeightPx : 0;
-
-      while (currentRowIndex < tableData.length) {
-        const rowData = tableData[currentRowIndex];
-        const rowHeightPx = this.calculateRowHeight(tableElement.body.rowTemplate, rowData);
-        
-        if (currentTableHeightPx + rowHeightPx > availableHeightPx) {
-          if (pageTableRows.length > 0) {
-            break; 
-          } else {
-            pageTableRows.push(rowData);
-            currentRowIndex++;
-            break;
-          }
-        }
-        
-        pageTableRows.push(rowData);
-        currentTableHeightPx += rowHeightPx;
-        currentRowIndex++;
-      }
-
-      const pageTableElement: TableElement = {
-        ...tableElement,
-        y: UnitConverter.pxToMm(tableYPx),
-        body: {
-          ...tableElement.body,
-          dataKey: `_page_data`
-        }
-      };
-      currentPageElements.push(pageTableElement);
-
-      const isLastPage = currentRowIndex >= tableData.length;
-
-      // 5. 只有最后一页渲染表尾元素（如果配置为固定位置）
-      if (isLastPage) {
-        currentPageElements.push(...footerElements);
-      }
-      
-      // 6. 每一页都渲染页码等 pageInfo 元素
-      currentPageElements.push(...otherElements);
-
-      pages.push({
-        pageNumber: currentPageNumber,
-        totalPages: 0,
-        elements: currentPageElements,
-        paperConfig: paper,
-        pageData: {
-          _page_data: pageTableRows
-        }
-      });
-
-      if (isLastPage) break;
-      currentPageNumber++;
+    // 3. 处理分组逻辑
+    let processedItems = rawItems;
+    if (tableElement.groupBy) {
+      processedItems = this.groupData(rawItems, tableElement.groupBy);
     }
 
-    pages.forEach(page => page.totalPages = pages.length);
+    // 4. 分页计算
+    const tablePages = this.calculateTablePagination(tableElement, processedItems);
+
+    // 5. 组装最终页面
+    const totalPages = tablePages.length;
+    for (let i = 0; i < totalPages; i++) {
+      const isFirst = i === 0;
+      const isLast = i === totalPages - 1;
+      
+      // 过滤当前页应显示的非表格元素
+      const pageElements = elements.filter((el: any) => {
+        if (el.type === 'table') return true;
+        if (el.type === 'pageInfo') return true;
+        
+        // 页眉逻辑 (y < table.y)
+        const isHeader = el.y < tableElement.y;
+        if (isHeader) {
+          if (headerDisplay === 'firstPageOnly') return isFirst;
+          return true;
+        }
+        
+        // 页脚逻辑 (y > table.y)
+        const isFooter = el.y > tableElement.y;
+        if (isFooter) {
+          if (footerDisplay === 'lastPageOnly') return isLast;
+          return true;
+        }
+        
+        return true;
+      });
+
+      pages.push({
+        pageNumber: i + 1,
+        totalPages,
+        elements: pageElements.map((el: any) => {
+          if (el.type === 'table') {
+            // 修正非首页表格的 Y 坐标
+            const newY = isFirst ? el.y : paper.margins.top;
+            return { ...el, y: newY };
+          }
+          return el;
+        }),
+        paperConfig: paper,
+        pageData: {
+          ...this.data,
+          [`__table_${tableElement.id}_data`]: tablePages[i]
+        }
+      });
+    }
+
     return pages;
+  }
+
+  /**
+   * 数据分组处理
+   */
+  private groupData(items: any[], groupBy: string): any[] {
+    const groups: Record<string, any[]> = {};
+    items.forEach(item => {
+      const groupVal = item[groupBy] || '未分类';
+      if (!groups[groupVal]) groups[groupVal] = [];
+      groups[groupVal].push(item);
+    });
+
+    const result: any[] = [];
+    Object.keys(groups).forEach(groupName => {
+      result.push({ __isGroup: true, groupName });
+      result.push(...groups[groupName]);
+    });
+    return result;
+  }
+
+  /**
+   * 表格分页核心逻辑
+   */
+  private calculateTablePagination(table: any, items: any[]): any[] {
+    const tablePages: any[] = [];
+    const { rowsPerPage, autoFillBlank, columnsCount = 1, dataFlow = 'ltr-ttb' } = table;
+    
+    // 策略 A: 固定行数分页
+    if (rowsPerPage && rowsPerPage > 0) {
+      // 1. 将原始数据按列数分块
+      // 注意：如果是纵向优先 (ttb-ltr)，逻辑会有所不同，这里先实现横向优先
+      const chunkedItems = this.chunkData(items, columnsCount, dataFlow);
+      
+      for (let i = 0; i < chunkedItems.length; i += rowsPerPage) {
+        let pageRows = chunkedItems.slice(i, i + rowsPerPage);
+        
+        // 2. 尾页自动填充
+        if (autoFillBlank && i + rowsPerPage >= chunkedItems.length) {
+          const fillCount = rowsPerPage - pageRows.length;
+          for (let j = 0; j < fillCount; j++) {
+            // 填充空白行，每行包含 columnsCount 个空白单元格
+            const blankRow = Array(columnsCount).fill({ __isBlank: true });
+            pageRows.push(blankRow);
+          }
+        }
+        tablePages.push(pageRows);
+      }
+    } 
+    // 策略 B: 自动高度分页 (简化版)
+    else {
+      const defaultRows = 15;
+      for (let i = 0; i < items.length; i += defaultRows) {
+        const pageItems = items.slice(i, i + defaultRows);
+        tablePages.push(pageItems.map(item => [item])); // 包装成单列结构
+      }
+    }
+
+    return tablePages;
+  }
+
+  /**
+   * 处理多列数据分块
+   */
+  private chunkData(items: any[], columns: number, flow: string): any[][] {
+    if (columns <= 1) return items.map(item => [item]);
+
+    const result: any[][] = [];
+    if (flow === 'ltr-ttb') {
+      // 横向优先: [1, 2, 3, 4] -> [[1, 2], [3, 4]]
+      for (let i = 0; i < items.length; i += columns) {
+        const row = items.slice(i, i + columns);
+        // 如果最后一行不满，补齐
+        while (row.length < columns) {
+          row.push({ __isBlank: true });
+        }
+        result.push(row);
+      }
+    } else {
+      // 纵向优先: 比较复杂，需要先知道总行数
+      // 假设总共有 N 条数据，分 C 列，则每页行数 R = ceil(N / C)
+      // 但这里是按 rowsPerPage 分页，所以逻辑是：
+      // 每一页取 rowsPerPage * columnsCount 条数据，然后在这页内进行纵向排列
+      const pageSize = (this.template.elements.find((el: any) => el.type === 'table').rowsPerPage || 15) * columns;
+      for (let i = 0; i < items.length; i += pageSize) {
+        const pageItems = items.slice(i, i + pageSize);
+        const rowsInThisPage = Math.ceil(pageItems.length / columns);
+        
+        for (let r = 0; r < rowsInThisPage; r++) {
+          const row = [];
+          for (let c = 0; c < columns; c++) {
+            const index = c * rowsInThisPage + r;
+            row.push(pageItems[index] || { __isBlank: true });
+          }
+          result.push(row);
+        }
+      }
+    }
+    return result;
   }
 }

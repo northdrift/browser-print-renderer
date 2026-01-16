@@ -61,38 +61,31 @@ export interface RectElement extends PrintElement {
   borderColor?: string; // 边框颜色
 }
 
-// 表格行配置
-export interface TableRow {
-  height: number; // mm
-  heightMode: 'fixed' | 'auto'; // 固定或自适应
-  cells: TableCell[];
-}
-
-// 表格单元格配置
-export interface TableCell {
+// 表格列配置 (V2 简化版)
+export interface TableColumn {
+  title: string;
+  dataKey: string;
   width: number; // mm
-  colSpan?: number;
-  rowSpan?: number;
-  content: PrintElement[]; // 单元格内的元素
+  align?: 'left' | 'center' | 'right';
 }
 
-// 表格元素类型
+// 表格元素类型 (V2 升级版)
 export interface TableElement extends PrintElement {
   type: 'table';
-  header?: {
-    rows: TableRow[];
-    repeat: 'all' | 'first' | 'none';
-  };
-  footer?: {
-    rows: TableRow[];
-    repeat: 'all' | 'last' | 'none';
-    position: 'fixed' | 'follow';
-  };
-  body: {
-    dataKey: string;
-    layout: 'ltr-ttb' | 'ttb-ltr';
-    rowTemplate: TableRow;
-  };
+  columns: TableColumn[];
+  dataKey: string; // 对应数据中的数组字段
+  
+  // V2.0 新增配置
+  tableHeaderDisplay?: 'perPage' | 'firstPageOnly';
+  columnsCount?: number; // 列数 (1, 2, 3...)
+  dataFlow?: 'horizontal' | 'vertical'; // 数据排列方向: 'ltr-ttb' (横向优先) | 'ttb-ltr' (纵向优先)
+  groupBy?: string; // 分组字段名
+  rowsPerPage?: number; // 每页固定行数
+  autoFillBlank?: boolean; // 自动填充尾页空白行
+  
+  // 表尾配置
+  footerMode?: 'fixed' | 'follow'; // 固定在页面底部或紧跟表格
+  footerElements?: PrintElement[]; // 表尾区域的自定义元素
 }
 
 // 页码/总页数元素
@@ -105,6 +98,10 @@ export interface PageInfoElement extends PrintElement {
 export interface PrintTemplate {
   paper: PaperConfig;
   elements: PrintElement[];
+  
+  // V2.0 新增配置
+  headerDisplay?: 'perPage' | 'firstPageOnly';
+  footerDisplay?: 'perPage' | 'lastPageOnly';
 }
 
 // 业务数据
@@ -118,4 +115,5 @@ export interface ComputedPage {
   totalPages: number;
   elements: PrintElement[];
   paperConfig: PaperConfig;
+  pageData: BusinessData; // 包含当前页特定的数据切片
 }

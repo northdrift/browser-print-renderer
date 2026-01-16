@@ -3,6 +3,8 @@ import { ref, watch } from 'vue';
 import PrintProvider from './components/PrintProvider.vue';
 
 const initialTemplate = {
+  headerDisplay: 'firstPageOnly', // 页眉仅首页显示
+  footerDisplay: 'lastPageOnly',  // 页脚仅末页显示
   paper: {
     width: 210,
     height: 297,
@@ -26,7 +28,7 @@ const initialTemplate = {
       y: 5,
       width: 130,
       height: 15,
-      content: '实时编辑打印演示单',
+      content: '多列分组打印演示单 (V2.0)',
       style: { fontSize: '24px', fontWeight: 'bold', textAlign: 'center' }
     },
     {
@@ -40,71 +42,32 @@ const initialTemplate = {
       style: { fontSize: 10 }
     },
     {
-      id: 'info-row',
-      type: 'text',
-      x: 0,
-      y: 30,
-      width: 190,
-      height: 5,
-      content: '客户：Manus 智能实验室 | 日期：2026-01-14 | 状态：已发货',
-      style: { fontSize: '12px', borderBottom: '1px solid #000', paddingBottom: '5px' }
-    },
-    {
       id: 'mainTable',
       type: 'table',
       x: 0,
-      y: 40,
+      y: 35,
       width: 190,
       height: 0,
-      header: {
-        rows: [
-          {
-            height: 10,
-            heightMode: 'fixed',
-            cells: [
-              { width: 20, content: [{ id: 'h1', type: 'text', content: 'ID' }] },
-              { width: 100, content: [{ id: 'h2', type: 'text', content: '描述 (支持长文本自动换行且不跨页分割)' }] },
-              { width: 35, content: [{ id: 'h3', type: 'text', content: '数量' }] },
-              { width: 35, content: [{ id: 'h4', type: 'text', content: '单价' }] }
-            ]
-          }
-        ],
-        repeat: 'all'
-      },
-      body: {
-        dataKey: 'items',
-        layout: 'ltr-ttb',
-        rowTemplate: {
-          height: 8,
-          heightMode: 'auto',
-          cells: [
-            { width: 20, content: [{ id: 'b1', type: 'text', dataKey: 'id' }] },
-            { width: 100, content: [{ id: 'b2', type: 'text', dataKey: 'desc' }] },
-            { width: 35, content: [{ id: 'b3', type: 'text', dataKey: 'qty' }] },
-            { width: 35, content: [{ id: 'b4', type: 'text', dataKey: 'price' }] }
-          ]
-        }
-      },
-      footer: {
-        rows: [
-          {
-            height: 10,
-            heightMode: 'fixed',
-            cells: [
-              { width: 120, colSpan: 2, content: [{ id: 'f1', type: 'text', content: '备注：请核对货物后签收。' }] },
-              { width: 70, colSpan: 2, content: [{ id: 'f2', type: 'text', dataKey: 'total' }] }
-            ]
-          }
-        ],
-        repeat: 'last',
-        position: 'follow'
-      }
+      dataKey: 'items',
+      columns: [
+        { title: 'ID', dataKey: 'id', width: 15 },
+        { title: '商品名称', dataKey: 'name', width: 45 },
+        { title: '数量', dataKey: 'qty', width: 15 },
+        { title: '单价', dataKey: 'price', width: 20 }
+      ],
+      // V2.0 新增配置
+      columnsCount: 2,           // 双列显示
+      dataFlow: 'ltr-ttb',       // 横向优先
+      groupBy: 'category',       // 按分类分组
+      rowsPerPage: 10,           // 每页固定 10 行
+      autoFillBlank: true,       // 自动填充空白行
+      tableHeaderDisplay: 'perPage' // 表头每页显示
     },
     {
       id: 'qrcode',
       type: 'qrcode',
       x: 165,
-      y: 250, // 调整 y 坐标，确保在页面底部区域
+      y: 250,
       width: 25,
       height: 25,
       dataKey: 'url'
@@ -113,7 +76,7 @@ const initialTemplate = {
       id: 'pageInfo',
       type: 'pageInfo',
       x: 0,
-      y: 275, // 调整 y 坐标
+      y: 275,
       width: 190,
       height: 5,
       format: '第 {pageNumber} 页 / 共 {totalPages} 页',
@@ -123,14 +86,14 @@ const initialTemplate = {
 };
 
 const initialData = {
-  orderNo: 'MANUS-888',
-  total: '总计：￥99,999.00',
+  orderNo: 'V2-20260116',
   url: 'https://manus.im',
-  items: Array.from({ length: 35 }, (_, i) => ({
+  items: Array.from({ length: 45 }, (_, i) => ({
     id: i + 1,
-    desc: i % 5 === 0 ? `这是一条非常长的描述文本，用于测试分页算法是否能正确处理长文本行，确保它不会被分割在两页之间。这是一条非常长的描述文本，用于测试分页算法是否能正确处理长文本行，确保它不会被分割在两页之间。` : `普通商品项目 ${i + 1}`,
+    name: `测试商品项目 ${i + 1}`,
     qty: Math.floor(Math.random() * 100),
-    price: '99.00'
+    price: '99.00',
+    category: i < 20 ? '电子产品' : (i < 35 ? '办公用品' : '生活百货')
   }))
 };
 
@@ -162,7 +125,7 @@ const print = () => {
   <div class="app-container">
     <div class="editor-panel">
       <div class="panel-header">
-        <span>模板与数据编辑器</span>
+        <span>打印模板编辑器 (V2.0)</span>
         <button class="print-btn" @click="print">打印预览</button>
       </div>
       
@@ -177,10 +140,21 @@ const print = () => {
       </div>
       
       <div v-if="error" class="error-msg">{{ error }}</div>
+
+      <div class="features-tip">
+        <h4>V2.0 新特性说明：</h4>
+        <ul>
+          <li><strong>多列排版</strong>：修改 <code>columnsCount</code> 试试。</li>
+          <li><strong>分组显示</strong>：数据按 <code>category</code> 自动分组。</li>
+          <li><strong>固定行数</strong>：<code>rowsPerPage: 10</code> 强制分页。</li>
+          <li><strong>空白填充</strong>：尾页不足 10 行自动补齐。</li>
+          <li><strong>显示控制</strong>：页眉仅首页，页脚仅末页。</li>
+        </ul>
+      </div>
     </div>
     
     <div class="preview-panel">
-      <div class="preview-header">实时预览区域 (修复重叠与分页优化版)</div>
+      <div class="preview-header">实时预览区域 (V2.0 增强版)</div>
       <div class="preview-scroll">
         <PrintProvider
           :template="template"
@@ -211,9 +185,10 @@ body {
   display: flex;
   flex-direction: column;
   border-right: 1px solid #333;
+  padding: 10px;
 }
 .panel-header {
-  padding: 15px;
+  padding: 10px;
   background: #252526;
   display: flex;
   justify-content: space-between;
@@ -224,7 +199,7 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 10px;
+  padding: 5px;
   min-height: 0;
 }
 .editor-section label {
@@ -239,12 +214,9 @@ body {
   border: 1px solid #444;
   padding: 10px;
   font-family: 'Fira Code', monospace;
-  font-size: 13px;
+  font-size: 12px;
   resize: none;
   outline: none;
-}
-.editor-section textarea:focus {
-  border-color: #007acc;
 }
 .error-msg {
   padding: 10px;
@@ -252,6 +224,16 @@ body {
   color: #ff8888;
   font-size: 12px;
 }
+.features-tip {
+  margin-top: 10px;
+  padding: 10px;
+  background: #252526;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.features-tip h4 { margin: 0 0 5px 0; color: #42b883; }
+.features-tip ul { margin: 0; padding-left: 15px; }
+
 .preview-panel {
   flex: 1;
   background: #e0e0e0;
@@ -279,9 +261,6 @@ body {
   border-radius: 4px;
   cursor: pointer;
   font-weight: bold;
-}
-.print-btn:hover {
-  background: #3aa876;
 }
 
 @media print {

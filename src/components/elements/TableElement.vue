@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { UnitConverter } from '../../utils/layout';
 
 const props = defineProps<{
   element: any;
@@ -10,42 +9,37 @@ const props = defineProps<{
   pageData: any;
 }>();
 
-const tableData = computed(() => {
-  return props.pageData?._page_data || [];
+const mmToPx = (mm: number) => (mm * 96) / 25.4;
+
+// 获取当前页的表格数据
+const displayData = computed(() => {
+  const key = `__table_${props.element.id}_data`;
+  return props.pageData[key] || [];
 });
 
 const shouldShowHeader = computed(() => {
-  if (!props.element.header) return false;
-  if (props.element.header.repeat === 'all') return true;
-  if (props.element.header.repeat === 'first' && props.pageNumber === 1) return true;
-  return false;
-});
-
-const shouldShowFooter = computed(() => {
-  if (!props.element.footer) return false;
-  // 如果是 follow 模式，由表格内部渲染
-  if (props.element.footer.position === 'follow') {
-    if (props.element.footer.repeat === 'all') return true;
-    const isLastPage = props.pageNumber === props.totalPages;
-    if (props.element.footer.repeat === 'last' && isLastPage) return true;
+  if (props.element.tableHeaderDisplay === 'firstPageOnly') {
+    return props.pageNumber === 1;
   }
-  // fixed 模式由 LayoutEngine 处理，不在这里渲染
-  return false;
+  return true;
 });
 
-const getRowStyle = (row: any) => {
-  return {
-    height: row.heightMode === 'fixed' ? `${UnitConverter.mmToPx(row.height)}px` : 'auto',
-    overflow: row.heightMode === 'fixed' ? 'hidden' : 'visible'
-  };
+const totalColumns = computed(() => {
+  return (props.element.columnsCount || 1) * props.element.columns.length;
+});
+
+const isGroupRow = (row: any[]) => {
+  return row.length > 0 && row[0].__isGroup;
 };
 
-const getCellStyle = (cellWidth: number) => {
+const getCellStyle = (col: any) => {
   return {
-    width: `${UnitConverter.mmToPx(cellWidth)}px`,
+    width: col.width ? `${mmToPx(col.width)}px` : 'auto',
+    textAlign: col.align || 'left',
     border: '1px solid black',
-    padding: '2px',
-    boxSizing: 'border-box' as const
+    padding: '4px',
+    boxSizing: 'border-box' as const,
+    wordBreak: 'break-all' as const
   };
 };
 </script>
@@ -53,52 +47,43 @@ const getCellStyle = (cellWidth: number) => {
 <template>
   <table class="print-table" cellspacing="0" cellpadding="0">
     <thead v-if="shouldShowHeader">
-      <tr v-for="(row, index) in element.header?.rows" :key="'header-' + index" :style="getRowStyle(row)">
-        <th 
-          v-for="(cell, cIndex) in row.cells" 
-          :key="cIndex" 
-          :style="getCellStyle(cell.width)"
-          :colspan="cell.colSpan"
-          :rowspan="cell.rowSpan"
-        >
-          <div v-for="(el, eIndex) in cell.content" :key="eIndex">
-            {{ el.dataKey ? data[el.dataKey] : el.content }}
-          </div>
-        </th>
+      <tr>
+        <template v-for="colIdx in (element.columnsCount || 1)" :key="colIdx">
+          <th 
+            v-for="col in element.columns" 
+            :key="col.dataKey"
+            :style="getCellStyle(col)"
+          >
+            {{ col.title }}
+          </th>
+        </template>
       </tr>
     </thead>
-    
+
     <tbody>
-      <tr v-for="(rowData, rIndex) in tableData" :key="rIndex" :style="getRowStyle(element.body.rowTemplate)">
-        <td 
-          v-for="(cell, cIndex) in element.body.rowTemplate.cells" 
-          :key="cIndex" 
-          :style="getCellStyle(cell.width)"
-          :colspan="cell.colSpan"
-          :rowspan="cell.rowSpan"
-        >
-          <div v-for="(el, eIndex) in cell.content" :key="eIndex">
-            {{ el.dataKey ? rowData[el.dataKey] : el.content }}
-          </div>
-        </td>
+      <tr v-for="(row, rowIdx) in displayData" :key="rowIdx">
+        <!-- 分组行渲染 -->
+        <template v-if="isGroupRow(row)">
+          <td :colspan="totalColumns" class="group-title">
+            {{ row[0].groupName }}
+          </td>
+        </template>
+
+        <!-- 普通行渲染 -->
+        <template v-else>
+          <template v-for="(cell, cellIdx) in row" :key="cellIdx">
+            <td 
+              v-for="col in element.columns" 
+              :key="col.dataKey"
+              :style="getCellStyle(col)"
+              :class="{ 'blank-cell': cell.__isBlank }"
+            >
+              {{ cell.__isBlank ? '' : (cell[col.dataKey] || '-') }}
+            </td>
+          </template>
+        </template>
       </tr>
     </tbody>
-
-    <tfoot v-if="shouldShowFooter">
-      <tr v-for="(row, index) in element.footer?.rows" :key="'footer-' + index" :style="getRowStyle(row)">
-        <td 
-          v-for="(cell, cIndex) in row.cells" 
-          :key="cIndex" 
-          :style="getCellStyle(cell.width)"
-          :colspan="cell.colSpan"
-          :rowspan="cell.rowSpan"
-        >
-          <div v-for="(el, eIndex) in cell.content" :key="eIndex">
-            {{ el.dataKey ? data[el.dataKey] : el.content }}
-          </div>
-        </td>
-      </tr>
-    </tfoot>
   </table>
 </template>
 
@@ -108,9 +93,25 @@ const getCellStyle = (cellWidth: number) => {
   border-collapse: collapse;
   table-layout: fixed;
 }
-th, td {
-  text-align: left;
-  vertical-align: top;
+
+th {
+  background-color: #f0f0f0;
+  font-weight: bold;
+}
+
+td, th {
   font-size: 12px;
+  height: 24px;
+}
+
+.group-title {
+  font-weight: bold;
+  background-color: #f9f9f9;
+  padding-left: 10px;
+  border: 1px solid black;
+}
+
+.blank-cell {
+  color: transparent;
 }
 </style>

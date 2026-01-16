@@ -38,7 +38,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'pages-ready', pages: ComputedPage[]): void;
-  (e: 'page-html', payload: { pageNumber: number; html: string }): void;
 }>();
 
 const computedPages = ref<ComputedPage[]>([]);
@@ -50,11 +49,10 @@ const computeLayout = async () => {
   isComputing.value = true;
   isReady.value = false;
   
-  // 使用 nextTick 确保在 DOM 更新后进行测量
   await nextTick();
   
   try {
-    // 传入数据的浅拷贝，LayoutEngine 内部会处理分页数据
+    // 使用 V2.0 布局引擎
     const engine = new LayoutEngine(props.template, { ...props.data });
     computedPages.value = engine.computePages();
     isReady.value = true;
@@ -70,40 +68,19 @@ onMounted(() => {
   computeLayout();
 });
 
-// 仅在 template 变化或 data 的核心结构变化时重新计算
 watch(() => props.template, () => {
   computeLayout();
 }, { deep: true });
 
-// 对于 data，我们可能需要更谨慎的 watch，或者由用户手动触发
 watch(() => props.data, () => {
   computeLayout();
-}, { deep: false }); // 避免深度监听导致的大量计算
+}, { deep: false });
 
 provide('businessData', props.data);
-
-const generateAllPagesHtml = () => {
-  if (props.outputMode === 'multiple') {
-    computedPages.value.forEach(page => {
-      emit('page-html', {
-        pageNumber: page.pageNumber,
-        html: `<!-- Page ${page.pageNumber} HTML Content -->`
-      });
-    });
-  }
-};
-
-watch(isReady, (ready) => {
-  if (ready && props.outputMode === 'multiple') {
-    generateAllPagesHtml();
-  }
-});
 </script>
 
 <template>
   <div class="print-provider">
-    <div id="print-measurement-tool"></div>
-
     <div v-if="isReady" class="print-content">
       <template v-if="outputMode === 'single' || !outputMode">
         <PrintPage
@@ -117,7 +94,7 @@ watch(isReady, (ready) => {
         />
       </template>
       <div v-else class="multiple-mode-placeholder">
-        已生成 {{ computedPages.length }} 页数据，请通过事件获取 HTML。
+        已生成 {{ computedPages.length }} 页数据。
       </div>
     </div>
     <div v-else class="loading-container">
@@ -131,13 +108,6 @@ watch(isReady, (ready) => {
 .print-provider {
   width: 100%;
   height: 100%;
-}
-
-#print-measurement-tool {
-  position: absolute;
-  left: -9999px;
-  top: -9999px;
-  visibility: hidden;
 }
 
 .print-content {
