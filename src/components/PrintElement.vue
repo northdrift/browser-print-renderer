@@ -8,6 +8,7 @@ import TableElement from './elements/TableElement.vue';
 import ImageElement from './elements/ImageElement.vue';
 import BarcodeElement from './elements/BarcodeElement.vue';
 import QrcodeElement from './elements/QrcodeElement.vue';
+import ShapeElement from './elements/ShapeElement.vue';
 
 const props = defineProps<{
   element: any;
@@ -36,6 +37,8 @@ const componentMap: Record<string, any> = {
   image: ImageElement,
   barcode: BarcodeElement,
   qrcode: QrcodeElement,
+  line: ShapeElement,
+  rect: ShapeElement,
 };
 
 const currentComponent = computed(() => componentMap[props.element.type]);

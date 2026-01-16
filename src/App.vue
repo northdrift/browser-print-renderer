@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import PrintProvider from './components/PrintProvider.vue';
 
-const initialTemplate = {
-  headerDisplay: 'firstPageOnly', // 页眉仅首页显示
-  footerDisplay: 'lastPageOnly',  // 页脚仅末页显示
+// 标准工业出库单场景模板
+const industrialTemplate = {
+  headerDisplay: 'firstPageOnly',
+  footerDisplay: 'lastPageOnly',
   paper: {
     width: 210,
     height: 297,
@@ -12,37 +13,24 @@ const initialTemplate = {
     margins: { top: 10, right: 10, bottom: 10, left: 10 }
   },
   elements: [
+    // 页眉装饰线
+    { id: 'top-line', type: 'line', x: 0, y: 28, width: 190, height: 0.5, lineStyle: 'solid', lineColor: '#333' },
+    
+    // Logo 与 标题
+    { id: 'logo', type: 'image', x: 0, y: 0, width: 20, height: 20, src: 'https://vuejs.org/images/logo.png' },
+    { id: 'title', type: 'text', x: 30, y: 5, width: 130, height: 15, content: '工业产品出库单 (标准版)', style: { fontSize: '24px', fontWeight: 'bold', textAlign: 'center', color: '#2c3e50' } },
+    
+    // 订单条码
+    { id: 'barcode', type: 'barcode', x: 160, y: 0, width: 30, height: 12, dataKey: 'orderNo', style: { fontSize: '10px' } },
+    
+    // 基础信息
+    { id: 'info-1', type: 'text', x: 0, y: 22, width: 60, height: 5, content: '客户名称：{customer}', style: { fontSize: '11px' } },
+    { id: 'info-2', type: 'text', x: 65, y: 22, width: 60, height: 5, content: '出库日期：{date}', style: { fontSize: '11px' } },
+    { id: 'info-3', type: 'text', x: 130, y: 22, width: 60, height: 5, content: '仓库：{warehouse}', style: { fontSize: '11px' } },
+
+    // 主体表格
     {
-      id: 'logo',
-      type: 'image',
-      x: 0,
-      y: 0,
-      width: 25,
-      height: 25,
-      src: 'https://vuejs.org/images/logo.png'
-    },
-    {
-      id: 'title',
-      type: 'text',
-      x: 30,
-      y: 5,
-      width: 130,
-      height: 15,
-      content: '多列分组打印演示单 (V2.0)',
-      style: { fontSize: '24px', fontWeight: 'bold', textAlign: 'center' }
-    },
-    {
-      id: 'orderBarcode',
-      type: 'barcode',
-      x: 165,
-      y: 0,
-      width: 35,
-      height: 15,
-      dataKey: 'orderNo',
-      style: { fontSize: 10 }
-    },
-    {
-      id: 'mainTable',
+      id: 'main-table',
       type: 'table',
       x: 0,
       y: 35,
@@ -50,61 +38,84 @@ const initialTemplate = {
       height: 0,
       dataKey: 'items',
       columns: [
-        { title: 'ID', dataKey: 'id', width: 15 },
-        { title: '商品名称', dataKey: 'name', width: 45 },
-        { title: '数量', dataKey: 'qty', width: 15 },
-        { title: '单价', dataKey: 'price', width: 20 }
+        { title: '编号', dataKey: 'id', width: 12, align: 'center' },
+        { title: '物料名称', dataKey: 'name', width: 40 },
+        { title: '规格型号', dataKey: 'spec', width: 30 },
+        { title: '单位', dataKey: 'unit', width: 10, align: 'center' },
+        { title: '数量', dataKey: 'qty', width: 15, align: 'right' },
+        { title: '单价', dataKey: 'price', width: 18, align: 'right' },
+        { title: '金额', dataKey: 'amount', width: 20, align: 'right' }
       ],
-      // V2.0 新增配置
-      columnsCount: 2,           // 双列显示
-      dataFlow: 'ltr-ttb',       // 横向优先
-      groupBy: 'category',       // 按分类分组
-      rowsPerPage: 10,           // 每页固定 10 行
-      autoFillBlank: true,       // 自动填充空白行
-      tableHeaderDisplay: 'perPage' // 表头每页显示
+      columnsCount: 1,
+      dataFlow: 'ltr-ttb',
+      groupBy: 'category',
+      rowsPerPage: 12,
+      autoFillBlank: true,
+      tableHeaderDisplay: 'perPage'
     },
-    {
-      id: 'qrcode',
-      type: 'qrcode',
-      x: 165,
-      y: 250,
-      width: 25,
-      height: 25,
-      dataKey: 'url'
-    },
-    {
-      id: 'pageInfo',
-      type: 'pageInfo',
-      x: 0,
-      y: 275,
-      width: 190,
-      height: 5,
-      format: '第 {pageNumber} 页 / 共 {totalPages} 页',
-      style: { textAlign: 'center', fontSize: '10px', color: '#666' }
-    }
+
+    // 页脚装饰线
+    { id: 'bottom-line', type: 'line', x: 0, y: 265, width: 190, height: 0.5, lineStyle: 'dashed', lineColor: '#999' },
+    
+    // 签章区域
+    { id: 'sign-1', type: 'text', x: 0, y: 270, width: 40, height: 5, content: '制单人：________', style: { fontSize: '11px' } },
+    { id: 'sign-2', type: 'text', x: 50, y: 270, width: 40, height: 5, content: '发货人：________', style: { fontSize: '11px' } },
+    { id: 'sign-3', type: 'text', x: 100, y: 270, width: 40, height: 5, content: '收货人签章：________', style: { fontSize: '11px' } },
+
+    // 二维码
+    { id: 'qrcode', type: 'qrcode', x: 165, y: 268, width: 22, height: 22, dataKey: 'qrUrl' },
+    
+    // 页码
+    { id: 'page-info', type: 'pageInfo', x: 0, y: 285, width: 190, height: 5, format: '第 {pageNumber} 页 / 共 {totalPages} 页', style: { textAlign: 'center', fontSize: '10px', color: '#7f8c8d' } }
   ]
 };
 
-const initialData = {
-  orderNo: 'V2-20260116',
-  url: 'https://manus.im',
-  items: Array.from({ length: 45 }, (_, i) => ({
+const industrialData = {
+  orderNo: 'SO-2026-001',
+  customer: 'Manus 智能制造有限公司',
+  date: '2026-01-16',
+  warehouse: '上海 1 号仓',
+  qrUrl: 'https://manus.im/verify/SO-2026-001',
+  items: Array.from({ length: 38 }, (_, i) => ({
     id: i + 1,
-    name: `测试商品项目 ${i + 1}`,
-    qty: Math.floor(Math.random() * 100),
-    price: '99.00',
-    category: i < 20 ? '电子产品' : (i < 35 ? '办公用品' : '生活百货')
-  }))
+    name: `工业级传感器 ${String.fromCharCode(65 + (i % 26))}${i}`,
+    spec: `MOD-${100 + i}-TX`,
+    unit: '个',
+    qty: Math.floor(Math.random() * 50) + 1,
+    price: (Math.random() * 100 + 50).toFixed(2),
+    amount: '0.00', // 稍后计算
+    category: i < 15 ? '核心组件' : (i < 30 ? '辅助配件' : '包装耗材')
+  })).map(item => ({ ...item, amount: (parseFloat(item.price) * item.qty).toFixed(2) }))
 };
 
-const templateJson = ref(JSON.stringify(initialTemplate, null, 2));
-const dataJson = ref(JSON.stringify(initialData, null, 2));
-
-const template = ref(initialTemplate);
-const data = ref(initialData);
+const templateJson = ref(JSON.stringify(industrialTemplate, null, 2));
+const dataJson = ref(JSON.stringify(industrialData, null, 2));
 const error = ref('');
 
-const updatePreview = () => {
+const template = ref(industrialTemplate);
+const data = ref(industrialData);
+
+// 快捷配置项
+const quickConfigs = ref({
+  columnsCount: 1,
+  rowsPerPage: 12,
+  autoFillBlank: true,
+  headerDisplay: 'firstPageOnly'
+});
+
+watch(quickConfigs, (newVal) => {
+  const t = JSON.parse(templateJson.value);
+  t.headerDisplay = newVal.headerDisplay;
+  const table = t.elements.find((el: any) => el.type === 'table');
+  if (table) {
+    table.columnsCount = newVal.columnsCount;
+    table.rowsPerPage = newVal.rowsPerPage;
+    table.autoFillBlank = newVal.autoFillBlank;
+  }
+  templateJson.value = JSON.stringify(t, null, 2);
+}, { deep: true });
+
+watch([templateJson, dataJson], () => {
   try {
     template.value = JSON.parse(templateJson.value);
     data.value = JSON.parse(dataJson.value);
@@ -112,50 +123,72 @@ const updatePreview = () => {
   } catch (e: any) {
     error.value = 'JSON 解析错误: ' + e.message;
   }
-};
+});
 
-watch([templateJson, dataJson], updatePreview);
-
-const print = () => {
-  window.print();
-};
+const print = () => window.print();
 </script>
 
 <template>
-  <div class="app-container">
-    <div class="editor-panel">
-      <div class="panel-header">
-        <span>打印模板编辑器 (V2.0)</span>
-        <button class="print-btn" @click="print">打印预览</button>
+  <div class="playground">
+    <!-- 侧边栏：编辑器与快捷配置 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h3>Manus Print Playground</h3>
+        <button class="btn-primary" @click="print">打印预览</button>
       </div>
-      
-      <div class="editor-section">
-        <label>打印模板 (JSON)</label>
-        <textarea v-model="templateJson" spellcheck="false"></textarea>
-      </div>
-      
-      <div class="editor-section">
-        <label>业务数据 (JSON)</label>
-        <textarea v-model="dataJson" spellcheck="false"></textarea>
-      </div>
-      
-      <div v-if="error" class="error-msg">{{ error }}</div>
 
-      <div class="features-tip">
-        <h4>V2.0 新特性说明：</h4>
-        <ul>
-          <li><strong>多列排版</strong>：修改 <code>columnsCount</code> 试试。</li>
-          <li><strong>分组显示</strong>：数据按 <code>category</code> 自动分组。</li>
-          <li><strong>固定行数</strong>：<code>rowsPerPage: 10</code> 强制分页。</li>
-          <li><strong>空白填充</strong>：尾页不足 10 行自动补齐。</li>
-          <li><strong>显示控制</strong>：页眉仅首页，页脚仅末页。</li>
-        </ul>
+      <!-- 快捷配置区 -->
+      <div class="config-card">
+        <div class="card-title">快捷配置 (V2.0 特性)</div>
+        <div class="config-grid">
+          <div class="config-item">
+            <label>表格列数</label>
+            <select v-model="quickConfigs.columnsCount">
+              <option :value="1">单列</option>
+              <option :value="2">双列</option>
+              <option :value="3">三列</option>
+            </select>
+          </div>
+          <div class="config-item">
+            <label>每页行数</label>
+            <input type="number" v-model="quickConfigs.rowsPerPage" />
+          </div>
+          <div class="config-item">
+            <label>页眉显示</label>
+            <select v-model="quickConfigs.headerDisplay">
+              <option value="firstPageOnly">仅首页</option>
+              <option value="perPage">每页</option>
+            </select>
+          </div>
+          <div class="config-item checkbox">
+            <input type="checkbox" v-model="quickConfigs.autoFillBlank" id="fill" />
+            <label for="fill">自动填充空白行</label>
+          </div>
+        </div>
       </div>
+
+      <!-- JSON 编辑器 -->
+      <div class="editor-tabs">
+        <div class="editor-container">
+          <label>模板配置 (Template JSON)</label>
+          <textarea v-model="templateJson" spellcheck="false"></textarea>
+        </div>
+        <div class="editor-container">
+          <label>业务数据 (Business Data JSON)</label>
+          <textarea v-model="dataJson" spellcheck="false"></textarea>
+        </div>
+      </div>
+
+      <div v-if="error" class="error-banner">{{ error }}</div>
     </div>
-    
-    <div class="preview-panel">
-      <div class="preview-header">实时预览区域 (V2.0 增强版)</div>
-      <div class="preview-scroll">
+
+    <!-- 主预览区 -->
+    <div class="main-content">
+      <div class="preview-toolbar">
+        <span>实时预览区域 (支持 A4 纸张模拟)</span>
+        <div class="zoom-info">100% 比例渲染</div>
+      </div>
+      <div class="preview-viewport">
         <PrintProvider
           :template="template"
           :data="data"
@@ -167,94 +200,44 @@ const print = () => {
 </template>
 
 <style>
-body {
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
+:root {
+  --bg-dark: #1e1e1e;
+  --bg-sidebar: #252526;
+  --accent: #42b883;
+  --text-dim: #888;
+  --border: #333;
 }
-.app-container {
+
+body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+
+.playground {
   display: flex;
   height: 100vh;
-  width: 100vw;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: #f0f2f5;
 }
-.editor-panel {
-  width: 40%;
-  background: #1e1e1e;
-  color: #d4d4d4;
+
+.sidebar {
+  width: 480px;
+  background: var(--bg-sidebar);
+  color: #fff;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #333;
-  padding: 10px;
+  border-right: 1px solid var(--border);
+  padding: 15px;
+  box-sizing: border-box;
 }
-.panel-header {
-  padding: 10px;
-  background: #252526;
+
+.sidebar-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-weight: bold;
+  margin-bottom: 15px;
 }
-.editor-section {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 5px;
-  min-height: 0;
-}
-.editor-section label {
-  margin-bottom: 5px;
-  font-size: 12px;
-  color: #888;
-}
-.editor-section textarea {
-  flex: 1;
-  background: #2d2d2d;
-  color: #9cdcfe;
-  border: 1px solid #444;
-  padding: 10px;
-  font-family: 'Fira Code', monospace;
-  font-size: 12px;
-  resize: none;
-  outline: none;
-}
-.error-msg {
-  padding: 10px;
-  background: #5a1d1d;
-  color: #ff8888;
-  font-size: 12px;
-}
-.features-tip {
-  margin-top: 10px;
-  padding: 10px;
-  background: #252526;
-  border-radius: 4px;
-  font-size: 11px;
-}
-.features-tip h4 { margin: 0 0 5px 0; color: #42b883; }
-.features-tip ul { margin: 0; padding-left: 15px; }
 
-.preview-panel {
-  flex: 1;
-  background: #e0e0e0;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.preview-header {
-  padding: 15px;
-  background: #f3f3f3;
-  border-bottom: 1px solid #ccc;
-  font-weight: bold;
-  text-align: center;
-}
-.preview-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
-}
-.print-btn {
-  background: #42b883;
+.sidebar-header h3 { margin: 0; font-size: 16px; color: var(--accent); }
+
+.btn-primary {
+  background: var(--accent);
   color: white;
   border: none;
   padding: 8px 16px;
@@ -263,21 +246,110 @@ body {
   font-weight: bold;
 }
 
+.config-card {
+  background: rgba(255,255,255,0.05);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 15px;
+}
+
+.card-title { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; text-transform: uppercase; }
+
+.config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.config-item label { display: block; font-size: 11px; color: #ccc; margin-bottom: 4px; }
+.config-item select, .config-item input[type="number"] {
+  width: 100%;
+  background: #333;
+  border: 1px solid #444;
+  color: #fff;
+  padding: 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.config-item.checkbox {
+  display: flex;
+  align-items: center;
+  grid-column: span 2;
+}
+.config-item.checkbox input { margin-right: 8px; }
+.config-item.checkbox label { margin-bottom: 0; cursor: pointer; }
+
+.editor-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.editor-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.editor-container label { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+.editor-container textarea {
+  flex: 1;
+  background: var(--bg-dark);
+  color: #9cdcfe;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  resize: none;
+  outline: none;
+}
+
+.error-banner {
+  background: #5a1d1d;
+  color: #ff8888;
+  padding: 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  margin-top: 10px;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.preview-toolbar {
+  height: 40px;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.zoom-info { color: var(--text-dim); font-size: 11px; }
+
+.preview-viewport {
+  flex: 1;
+  overflow-y: auto;
+  padding: 30px;
+  display: flex;
+  justify-content: center;
+}
+
 @media print {
-  .editor-panel, .preview-header {
-    display: none;
-  }
-  .preview-panel {
-    width: 100%;
-    height: auto;
-    background: white;
-  }
-  .preview-scroll {
-    overflow: visible;
-    padding: 0;
-  }
-  body {
-    overflow: visible;
-  }
+  .sidebar, .preview-toolbar { display: none; }
+  .main-content { background: white; }
+  .preview-viewport { padding: 0; overflow: visible; }
 }
 </style>
