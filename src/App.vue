@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch } from 'vue';
 import PrintProvider from './components/PrintProvider.vue';
 
 const providerRef = ref<any>(null);

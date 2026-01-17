@@ -143,7 +143,8 @@ export class LayoutEngine {
    */
   private groupData(items: any[], groupBy: string): any[] {
     const groups: Record<string, any[]> = {};
-    items.forEach(item => {
+    const safeItems = items || [];
+    safeItems.forEach(item => {
       const groupVal = item[groupBy] || '未分类';
       if (!groups[groupVal]) groups[groupVal] = [];
       groups[groupVal].push(item);
